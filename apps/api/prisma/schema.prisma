@@ -1,0 +1,402 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id              String        @id @default(uuid())
+  email           String        @unique
+  passwordHash    String
+  fullName        String
+  phone           String?       @unique
+  role            String        @default("CUSTOMER") // CUSTOMER, LISTENER, LISTENER_SUPERVISOR, SUPPORT_AGENT, CAREERS_RECRUITER, ADMIN, SUPER_ADMIN
+  isEmailVerified Boolean       @default(false)
+  preferredLang   String        @default("mr") // mr, hi, en
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  profile         UserProfile?
+  consents        UserConsent[]
+  sessions        Session[]
+  bookings        Booking[]     @relation("CustomerBookings")
+  donations       Donation[]
+  supportTickets  SupportTicket[]
+  safetyReports   SafetyReport[] @relation("ReportedByUser")
+  aiUsageRecords  AIUsageRecord[]
+  auditLogs       AuditLog[]
+  listenerProfile ListenerProfile?
+}
+
+model UserProfile {
+  id             String    @id @default(uuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName    String?
+  avatarUrl      String?
+  city           String?
+  state          String?
+  bio            String?
+  emergencyPhone String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model UserConsent {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  consentType String   // TERMS, PRIVACY, DATA_PROCESSING, AI_USE
+  granted     Boolean  @default(true)
+  ipAddress   String?
+  userAgent   String?
+  timestamp   DateTime @default(now())
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  ipAddress String?
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model ListeningCategory {
+  id           String   @id @default(uuid())
+  slug         String   @unique
+  nameEn       String
+  nameMr       String
+  nameHi       String
+  descEn       String
+  descMr       String
+  descHi       String
+  iconKey      String   // Lucide icon identifier
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  safetyNotice String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  skills       ListenerSkill[]
+  bookings     Booking[]
+  translations CategoryTranslation[]
+}
+
+model CategoryTranslation {
+  id          String            @id @default(uuid())
+  categoryId  String
+  category    ListeningCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  locale      String            // mr, hi, en
+  name        String
+  description String
+
+  @@unique([categoryId, locale])
+}
+
+model ListenerProfile {
+  id              String         @id @default(uuid())
+  userId          String         @unique
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName     String
+  avatarUrl       String?
+  headline        String
+  bio             String
+  languagesSpoken String         // JSON array string e.g. '["mr", "hi", "en"]'
+  isVerified      Boolean        @default(false)
+  currentStatus   String         @default("OFFLINE") // AVAILABLE, BUSY, IN_SESSION, ON_BREAK, OFFLINE
+  rating          Float          @default(5.0)
+  totalSessions   Int            @default(0)
+  hourlyRatePaise Int            @default(9900) // integer paise
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  skills          ListenerSkill[]
+  availabilities  ListenerAvailability[]
+  shifts          ListenerShift[]
+  bookings        Booking[]      @relation("ListenerBookings")
+}
+
+model ListenerSkill {
+  id         String            @id @default(uuid())
+  listenerId String
+  listener   ListenerProfile   @relation(fields: [listenerId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   ListeningCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([listenerId, categoryId])
+}
+
+model ListenerAvailability {
+  id         String          @id @default(uuid())
+  listenerId String
+  listener   ListenerProfile @relation(fields: [listenerId], references: [id], onDelete: Cascade)
+  dayOfWeek  Int             // 0=Sun, 1=Mon, ..., 6=Sat
+  startTime  String          // "09:00"
+  endTime    String          // "17:00"
+  isActive   Boolean         @default(true)
+}
+
+model ListenerShift {
+  id         String          @id @default(uuid())
+  listenerId String
+  listener   ListenerProfile @relation(fields: [listenerId], references: [id], onDelete: Cascade)
+  shiftStart DateTime
+  shiftEnd   DateTime?
+  status     String          @default("AVAILABLE")
+}
+
+model PricingPlan {
+  id              String   @id @default(uuid())
+  code            String   @unique // TRIAL_1_INR, STANDARD_20_MIN, EXTENDED_45_MIN
+  title           String
+  description     String
+  durationMinutes Int
+  pricePaise      Int      // 100 paise = ₹1
+  isIntroductory  Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  bookings        Booking[]
+}
+
+model Booking {
+  id              String            @id @default(uuid())
+  bookingNumber   String            @unique // MB-YYYYMMDD-XXXX
+  customerId      String
+  customer        User              @relation("CustomerBookings", fields: [customerId], references: [id])
+  listenerId      String?
+  listener        ListenerProfile?  @relation("ListenerBookings", fields: [listenerId], references: [id])
+  categoryId      String
+  category        ListeningCategory @relation(fields: [categoryId], references: [id])
+  pricingPlanId   String
+  pricingPlan     PricingPlan       @relation(fields: [pricingPlanId], references: [id])
+  format          String            @default("AUDIO_CALL") // TEXT_CHAT, AUDIO_CALL
+  status          String            @default("PENDING_PAYMENT") // PENDING_PAYMENT, CONFIRMED, QUEUED, IN_PROGRESS, COMPLETED, CANCELLED, EXPIRED, REFUNDED
+  scheduledStart  DateTime
+  scheduledEnd    DateTime
+  actualStart     DateTime?
+  actualEnd       DateTime?
+  amountPaise     Int
+  cancelledReason String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  session         ListeningSession?
+  payments        Payment[]
+  events          BookingEvent[]
+}
+
+model BookingEvent {
+  id         String   @id @default(uuid())
+  bookingId  String
+  booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  fromStatus String?
+  toStatus   String
+  actorId    String?
+  notes      String?
+  timestamp  DateTime @default(now())
+}
+
+model ListeningSession {
+  id        String    @id @default(uuid())
+  bookingId String    @unique
+  booking   Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  roomToken String    @unique
+  isActive  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  participants SessionParticipant[]
+  messages     ChatMessage[]
+}
+
+model SessionParticipant {
+  id        String           @id @default(uuid())
+  sessionId String
+  session   ListeningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId    String
+  role      String
+  joinedAt  DateTime         @default(now())
+  leftAt    DateTime?
+}
+
+model ChatMessage {
+  id        String           @id @default(uuid())
+  sessionId String
+  session   ListeningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  senderId  String
+  content   String
+  isSystem  Boolean          @default(false)
+  sentAt    DateTime         @default(now())
+}
+
+model Payment {
+  id                String   @id @default(uuid())
+  bookingId         String?
+  booking           Booking? @relation(fields: [bookingId], references: [id])
+  razorpayOrderId   String   @unique
+  razorpayPaymentId String?  @unique
+  razorpaySignature String?
+  amountPaise       Int
+  currency          String   @default("INR")
+  status            String   @default("CREATED") // CREATED, AUTHORIZED, CAPTURED, FAILED, REFUNDED
+  failureReason     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  refunds           Refund[]
+}
+
+model Refund {
+  id               String   @id @default(uuid())
+  paymentId        String
+  payment          Payment  @relation(fields: [paymentId], references: [id])
+  razorpayRefundId String?  @unique
+  amountPaise      Int
+  reason           String
+  status           String   @default("PROCESSED")
+  createdAt        DateTime @default(now())
+}
+
+model DonationCampaign {
+  id          String     @id @default(uuid())
+  slug        String     @unique
+  title       String
+  description String
+  targetPaise Int
+  raisedPaise Int        @default(0)
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  donations   Donation[]
+}
+
+model Donation {
+  id                String            @id @default(uuid())
+  campaignId        String?
+  campaign          DonationCampaign? @relation(fields: [campaignId], references: [id])
+  userId            String?
+  user              User?             @relation(fields: [userId], references: [id])
+  donorName         String?
+  donorEmail        String?
+  amountPaise       Int
+  isAnonymous       Boolean           @default(false)
+  razorpayOrderId   String            @unique
+  razorpayPaymentId String?           @unique
+  receiptNumber     String            @unique
+  createdAt         DateTime          @default(now())
+}
+
+model CareerJob {
+  id               String              @id @default(uuid())
+  slug             String              @unique
+  title            String
+  department       String
+  location         String              @default("Remote / Maharashtra")
+  employmentType   String              // Full-time, Part-time, Flexible Shift
+  languagesReq     String              // JSON string e.g. '["mr", "hi", "en"]'
+  description      String
+  responsibilities String
+  requirements     String
+  trainingInfo     String
+  isOpen           Boolean             @default(true)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  applications     CareerApplication[]
+}
+
+model CareerApplication {
+  id              String              @id @default(uuid())
+  jobId           String
+  job             CareerJob           @relation(fields: [jobId], references: [id])
+  fullName        String
+  email           String
+  phone           String
+  languagesSpoken String              // JSON array
+  motivationText  String
+  stage           String              @default("SUBMITTED") // SUBMITTED, UNDER_REVIEW, SHORTLISTED, INTERVIEW, SELECTED, REJECTED, WITHDRAWN
+  recruiterNotes  String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  documents       ApplicantDocument[]
+}
+
+model ApplicantDocument {
+  id            String            @id @default(uuid())
+  applicationId String
+  application   CareerApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fileKey       String
+  fileName      String
+  mimeType      String
+  fileSize      Int
+  uploadedAt    DateTime          @default(now())
+}
+
+model SupportTicket {
+  id        String   @id @default(uuid())
+  ticketNo  String   @unique
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  name      String
+  email     String
+  subject   String
+  message   String
+  status    String   @default("OPEN")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SafetyReport {
+  id          String   @id @default(uuid())
+  reportedBy  String?
+  user        User?    @relation("ReportedByUser", fields: [reportedBy], references: [id])
+  sessionId   String?
+  severity    String   @default("HIGH_RISK") // HIGH_RISK, MEDIUM, LOW
+  reason      String
+  triageNotes String?
+  isResolved  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AIUsageRecord {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  modelUsed  String
+  tokensIn   Int
+  tokensOut  Int
+  durationMs Int
+  costPaise  Int      @default(0)
+  language   String   @default("mr")
+  createdAt  DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String
+  resource   String
+  resourceId String?
+  details    String?
+  ipAddress  String?
+  timestamp  DateTime @default(now())
+}
+
+model PlatformSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}

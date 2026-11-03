@@ -1,0 +1,33 @@
+{
+  "name": "manmitra-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ManMitra (मनमित्र) — AI-Powered Emotional Listening & Human Connection Platform",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "prisma:generate": "npm run prisma:generate --workspace=apps/api",
+    "prisma:migrate": "npm run prisma:migrate --workspace=apps/api",
+    "prisma:seed": "npm run prisma:seed --workspace=apps/api"
+  },
+  "keywords": [
+    "manmitra",
+    "emotional-listening",
+    "peer-support",
+    "mental-wellness",
+    "ai-listening",
+    "marathi",
+    "hindi",
+    "english"
+  ],
+  "author": "ManMitra Team",
+  "license": "UNLICENSED"
+}
